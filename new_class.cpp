@@ -77,24 +77,7 @@ void cleanupOldBookings() {
         string room, start, end, date, branch, division, batch, faculty, subject;
         ss >> room >> start >> end >> date >> branch >> division >> batch >> faculty >> subject;
 
-        if (date.empty() || end.empty()) {
-            validLines.push_back(line);
-            continue;
-        }
-
-        tm bookingEnd = {};
-        string dateTime = date + " " + end;
-        istringstream dt(dateTime);
-        dt >> get_time(&bookingEnd, "%Y-%m-%d %H:%M");
-
-        if (dt.fail()) {
-            validLines.push_back(line);
-            continue;
-        }
-
-        time_t endTime = mktime(&bookingEnd);
-        if (endTime > now)
-            validLines.push_back(line);
+        validLines.push_back(line); // keep all since AM/PM cannot be compared now
     }
     in.close();
 
@@ -119,7 +102,7 @@ public:
     }
 
     // ------------------- Menu -------------------
-    void menu(){
+    void menu() {
         try {
             if (role == "faculty") {
                 int choice = 0;
@@ -133,27 +116,37 @@ public:
                     cin >> choice;
 
                     if (choice == 1) {
-                        string start, end;
-                        cout << "Enter start time: ";
-                        cin >> start;
-                        cout << "Enter end time: ";
-                        cin >> end;
+                        string h1, p1, h2, p2;
+                        cout << "Enter start time (HH AM/PM): ";
+                        cin >> h1 >> p1;
+                        cout << "Enter end time (HH AM/PM): ";
+                        cin >> h2 >> p2;
+
+                        string start = h1 + " " + p1;
+                        string end = h2 + " " + p2;
+
                         showFreeRoomsAtTime(start, end);
+
                     } else if (choice == 2) {
                         string room;
                         cout << "Enter room number: ";
                         cin >> room;
                         showFreeTimesForRoom(room);
+
                     } else if (choice == 3) {
                         bookSlot();
+
                     } else if (choice == 4) {
                         removeBooking();
+
                     } else if (choice == 5) {
                         cout << "Exiting faculty menu...\n";
+
                     } else {
                         throw InvalidChoiceException("Invalid choice entered.");
                     }
                 } while (choice != 5);
+
             } else if (role == "student") {
                 int choice = 0;
                 do {
@@ -163,6 +156,7 @@ public:
                     if (choice == 1) showStudentTimetable();
                     else if (choice == 2) cout << "Exiting student menu...\n";
                     else throw InvalidChoiceException("Invalid choice entered.");
+
                 } while (choice != 2);
             }
         }
@@ -182,19 +176,14 @@ public:
             string line;
 
             while (getline(normal, line)) {
-                int pos1 = line.find(' ');
-                if (pos1 == -1) continue;
-                int pos2 = line.find(' ', pos1 + 1);
-                int pos3 = line.find(' ', pos2 + 1);
-
-                string room = line.substr(0, pos1);
-                string start = line.substr(pos1 + 1, pos2 - pos1 - 1);
-                string end = line.substr(pos2 + 1, pos3 - pos2 - 1);
+                stringstream ss(line);
+                string room, start, end;
+                ss >> room >> start >> end;
 
                 if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
                     allRooms.push_back(room);
 
-                if ((start == startTime) || (end == endTime))
+                if (start == startTime || end == endTime)
                     booked.push_back(room);
             }
             normal.close();
@@ -204,34 +193,30 @@ public:
 
             while (getline(booking, line)) {
                 stringstream ss(line);
-                string room, start, end, date, branch, division, batch, faculty, subject;
-                ss >> room >> start >> end >> date >> branch >> division >> batch >> faculty >> subject;
+                string room, start, end;
+                ss >> room >> start >> end;
 
                 if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
                     allRooms.push_back(room);
 
-                if ((start == startTime) || (end == endTime))
+                if (start == startTime || end == endTime)
                     booked.push_back(room);
             }
             booking.close();
 
             cout << "\nFree rooms between " << startTime << " and " << endTime << ":\n";
             int count = 0;
-            for (int i = 0; i < allRooms.size(); i++) {
-                if (find(booked.begin(), booked.end(), allRooms[i]) == booked.end()) {
-                    cout << allRooms[i] << " ";
+            for (auto &r : allRooms) {
+                if (find(booked.begin(), booked.end(), r) == booked.end()) {
+                    cout << r << " ";
                     count++;
                 }
             }
             if (count == 0) throw RoomNotFoundException("No free rooms found for given time.");
             cout << "\n";
         }
-        catch (FileException e) {
-            cout << "Error: " << e.what() << endl;
-        }
-        catch (RoomNotFoundException e) {
-            cout << "Error: " << e.what() << endl;
-        }
+        catch (FileException e) { cout << "Error: " << e.what() << endl; }
+        catch (RoomNotFoundException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Show Free Times for Room -------------------
@@ -244,17 +229,11 @@ public:
             string line;
 
             while (getline(normal, line)) {
-                int pos1 = line.find(' ');
-                if (pos1 == -1) continue;
-                int pos2 = line.find(' ', pos1 + 1);
-                int pos3 = line.find(' ', pos2 + 1);
+                stringstream ss(line);
+                string r, start, end;
+                ss >> r >> start >> end;
 
-                string r = line.substr(0, pos1);
-                string start = line.substr(pos1 + 1, pos2 - pos1 - 1);
-                string end = line.substr(pos2 + 1, pos3 - pos2 - 1);
-
-                if (find(allStart.begin(), allStart.end(), start) == allStart.end())
-                    allStart.push_back(start);
+                allStart.push_back(start);
                 allEnd.push_back(end);
 
                 if (r == room) {
@@ -269,11 +248,10 @@ public:
 
             while (getline(booking, line)) {
                 stringstream ss(line);
-                string r, start, end, date, branch, division, batch, faculty, subject;
-                ss >> r >> start >> end >> date >> branch >> division >> batch >> faculty >> subject;
+                string r, start, end;
+                ss >> r >> start >> end;
 
-                if (find(allStart.begin(), allStart.end(), start) == allStart.end())
-                    allStart.push_back(start);
+                allStart.push_back(start);
                 allEnd.push_back(end);
 
                 if (r == room) {
@@ -289,20 +267,15 @@ public:
             for (int i = 0; i < allStart.size(); i++) {
                 bool isBooked = false;
                 for (int j = 0; j < bookedStart.size(); j++)
-                    if (allStart[i] == bookedStart[j] && allEnd[i] == bookedEnd[j]) {
+                    if (allStart[i] == bookedStart[j] && allEnd[i] == bookedEnd[j])
                         isBooked = true;
-                        break;
-                    }
+
                 if (!isBooked)
                     cout << allStart[i] << " - " << allEnd[i] << "\n";
             }
         }
-        catch (FileException e) {
-            cout << "Error: " << e.what() << endl;
-        }
-        catch (RoomNotFoundException e) {
-            cout << "Error: " << e.what() << endl;
-        }
+        catch (FileException e) { cout << "Error: " << e.what() << endl; }
+        catch (RoomNotFoundException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Book Slot -------------------
@@ -327,13 +300,16 @@ public:
             cin >> batch;
 
             if (choice == 1) {
-                string start, end, date;
-                cout << "Enter start time (HH:MM): ";
-                cin >> start;
-                cout << "Enter end time (HH:MM): ";
-                cin >> end;
+                string h1, p1, h2, p2, date;
+                cout << "Enter start time (HH AM/PM): ";
+                cin >> h1 >> p1;
+                cout << "Enter end time (HH AM/PM): ";
+                cin >> h2 >> p2;
                 cout << "Enter date (YYYY-MM-DD): ";
                 cin >> date;
+
+                string start = h1 + " " + p1;
+                string end = h2 + " " + p2;
 
                 showFreeRoomsAtTime(start, end);
 
@@ -349,14 +325,16 @@ public:
                     cin >> subject;
 
                     ofstream out("bookings.txt", ios::app);
-                    if (!out.is_open()) throw FileException("Could not open bookings.txt for writing.");
                     out << room << " " << start << " " << end << " " << date << " "
                         << branch << " " << division << " " << batch << " "
                         << Temp::loggedFaculty << " " << subject << "\n";
                     out.close();
                     cout << "Booking saved!\n";
-                } else cout << "Booking cancelled.\n";
-            } else if (choice == 2) {
+                }
+                else cout << "Booking cancelled.\n";
+            }
+
+            else if (choice == 2) {
                 string room;
                 cout << "Enter room number: ";
                 cin >> room;
@@ -367,32 +345,31 @@ public:
                 cin >> confirm;
 
                 if (confirm == 'y') {
-                    string start, end, date, subject;
-                    cout << "Enter start time (HH:MM): ";
-                    cin >> start;
-                    cout << "Enter end time (HH:MM): ";
-                    cin >> end;
+                    string h1, p1, h2, p2, date, subject;
+                    cout << "Enter start time (HH AM/PM): ";
+                    cin >> h1 >> p1;
+                    cout << "Enter end time (HH AM/PM): ";
+                    cin >> h2 >> p2;
                     cout << "Enter date (YYYY-MM-DD): ";
                     cin >> date;
                     cout << "Enter subject: ";
                     cin >> subject;
 
+                    string start = h1 + " " + p1;
+                    string end = h2 + " " + p2;
+
                     ofstream out("bookings.txt", ios::app);
-                    if (!out.is_open()) throw FileException("Could not open bookings.txt for writing.");
                     out << room << " " << start << " " << end << " " << date << " "
                         << branch << " " << division << " " << batch << " "
                         << Temp::loggedFaculty << " " << subject << "\n";
                     out.close();
                     cout << "Booking saved!\n";
-                } else cout << "Booking cancelled.\n";
+                }
+                else cout << "Booking cancelled.\n";
             }
         }
-        catch (InvalidChoiceException e) {
-            cout << "Error: " << e.what() << endl;
-        }
-        catch (FileException e) {
-            cout << "Error: " << e.what() << endl;
-        }
+        catch (InvalidChoiceException e) { cout << "Error: " << e.what() << endl; }
+        catch (FileException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Remove Booking -------------------
@@ -425,23 +402,16 @@ public:
 
             string toRemove = ownBookings[idx - 1];
             ofstream out("bookings.txt", ios::trunc);
-            if (!out.is_open()) throw FileException("Unable to update bookings file.");
-            for (int i = 0; i < lines.size(); i++)
-                if (lines[i] != toRemove)
-                    out << lines[i] << "\n";
+            for (auto &l : lines)
+                if (l != toRemove)
+                    out << l << "\n";
             out.close();
 
             cout << "Booking removed successfully!\n";
         }
-        catch (FileException e) {
-            cout << "Error: " << e.what() << endl;
-        }
-        catch (InvalidChoiceException e) {
-            cout << "Error: " << e.what() << endl;
-        }
-        catch (RoomNotFoundException e) {
-            cout << "Error: " << e.what() << endl;
-        }
+        catch (FileException e) { cout << "Error: " << e.what() << endl; }
+        catch (InvalidChoiceException e) { cout << "Error: " << e.what() << endl; }
+        catch (RoomNotFoundException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Student Timetable -------------------
@@ -466,9 +436,7 @@ public:
             }
             booking.close();
         }
-        catch (FileException e) {
-            cout << "Error: " << e.what() << endl;
-        }
+        catch (FileException e) { cout << "Error: " << e.what() << endl; }
     }
 };
 
@@ -533,12 +501,8 @@ bool facultyLogin() {
         }
         throw LoginFailedException("Invalid credentials.");
     }
-    catch (FileException e) {
-        cout << "Error: " << e.what() << endl;
-    }
-    catch (LoginFailedException e) {
-        cout << "Error: " << e.what() << endl;
-    }
+    catch (FileException e) { cout << "Error: " << e.what() << endl; }
+    catch (LoginFailedException e) { cout << "Error: " << e.what() << endl; }
     return false;
 }
 
@@ -574,6 +538,7 @@ int main() {
             else if (choice == 3) studentLogin();
             else if (choice == 4) cout << "Goodbye!\n";
             else throw InvalidChoiceException("Invalid main menu choice.");
+
         } while (choice != 4);
     }
     catch (InvalidChoiceException e) {
