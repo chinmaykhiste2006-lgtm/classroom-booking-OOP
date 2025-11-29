@@ -119,7 +119,7 @@ public:
     }
 
     // ------------------- Menu -------------------
-    void menu() override {
+    void menu(){
         try {
             if (role == "faculty") {
                 int choice = 0;
