@@ -527,7 +527,7 @@ int main() {
 
             if (choice == 1) facultySignup();
             else if (choice == 2) facultyLogin();
-            else if (choice == 3) studentLogin();
+else if (choice == 3) studentLogin();
             else if (choice == 4) cout << "Goodbye!\n";
             else throw InvalidChoiceException("Invalid main menu choice.");
 
@@ -536,6 +536,5 @@ int main() {
     catch (InvalidChoiceException e) {
         cout << "Error: " << e.what() << endl;
     }
-
     return 0;
 }
