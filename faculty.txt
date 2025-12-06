@@ -1,5 +1,3 @@
 Sangeeta Ma'am|OOP,OS|S@123|123
-
 Deepak sir|DBMS,CN|D123|D@123
-Sangeeta Ma'am|OOP,OS|S@123|123
-Deepak Sir|DBMS|D@123|123
+
