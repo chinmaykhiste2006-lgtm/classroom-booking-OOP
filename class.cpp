@@ -59,14 +59,12 @@ public:
     virtual void menu() = 0;
 
     virtual ~User() {
-        cout << "User " << name << " destroyed.\n";
+        cout << "User " << name << " Exited.\n";
     }
 };
 
 // ------------------- Cleanup Function -------------------
 void cleanupOldBookings() {
-    // We NO longer delete old bookings because AM/PM
-    // cannot be compared to a 24-hour system
     return;
 }
 

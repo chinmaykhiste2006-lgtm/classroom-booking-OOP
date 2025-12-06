@@ -6,6 +6,7 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 using namespace std;
 
 // ------------------- Custom Exceptions -------------------
@@ -44,6 +45,80 @@ public:
 };
 string Temp::loggedFaculty = "";
 
+// ------------------- Utility functions -------------------
+
+// Convert a time string like "10 AM", "10:30 PM", "12 AM", or "12:00 PM" into minutes since 00:00
+int timeStrToMinutes(const string &timeWithPeriod) {
+    // Expect formats:
+    // "HH AM" or "HH:MM AM" or "H AM" etc.
+    // The input could be like "10", "10:30", but our code usually uses "10 AM" (two tokens).
+    // Here we handle both a single token with period appended (e.g., "10AM") rarely, but mainly "HH AM".
+    string s = timeWithPeriod;
+    // Trim
+    auto trim = [](string t) {
+        size_t a = t.find_first_not_of(" \t\r\n");
+        size_t b = t.find_last_not_of(" \t\r\n");
+        if (a == string::npos) return string("");
+        return t.substr(a, b - a + 1);
+    };
+    s = trim(s);
+    // Find last space to separate period
+    // But sometimes input might be "10 AM" (two tokens). We'll expect caller to pass combined.
+    // We'll try to split by space:
+    string timePart, period;
+    size_t pos = s.find_last_of(' ');
+    if (pos != string::npos) {
+        timePart = s.substr(0, pos);
+        period = s.substr(pos + 1);
+    } else {
+        // fallback: try last two chars as period (AM/PM)
+        if (s.size() > 2) {
+            period = s.substr(s.size() - 2);
+            timePart = s.substr(0, s.size() - 2);
+        } else {
+            // unknown format, return 0
+            return 0;
+        }
+    }
+
+    // normalize period
+    for (auto &c : period) c = toupper(c);
+
+    // parse timePart (HH or HH:MM)
+    int hh = 0, mm = 0;
+    size_t colon = timePart.find(':');
+    if (colon == string::npos) {
+        // maybe has stray spaces, trim
+        string tp = timePart;
+        // remove possible spaces
+        tp.erase(remove_if(tp.begin(), tp.end(), ::isspace), tp.end());
+        if (tp.empty()) return 0;
+        hh = stoi(tp);
+        mm = 0;
+    } else {
+        string hstr = timePart.substr(0, colon);
+        string mstr = timePart.substr(colon + 1);
+        hh = stoi(hstr);
+        mm = stoi(mstr);
+    }
+
+    if (period == "PM" && hh != 12) hh += 12;
+    if (period == "AM" && hh == 12) hh = 0;
+
+    return hh * 60 + mm;
+}
+
+// Parse two tokens (e.g., h and p) into a combined string "h p" and convert
+int tokensToMinutes(const string &h, const string &p) {
+    string combined = h + " " + p; // e.g., "10 AM" or "10:30 PM"
+    return timeStrToMinutes(combined);
+}
+
+// Overlap test: returns true if [s1,e1) overlaps [s2,e2)
+bool intervalsOverlap(int s1, int e1, int s2, int e2) {
+    return (s1 < e2) && (e1 > s2);
+}
+
 // ------------------- Base User Class -------------------
 class User {
 protected:
@@ -59,32 +134,14 @@ public:
     virtual void menu() = 0;
 
     virtual ~User() {
-        cout << "User " << name << " destroyed.\n";
+        cout << "User " << name << " Exited.\n";
     }
 };
 
 // ------------------- Cleanup Function -------------------
 void cleanupOldBookings() {
-    ifstream in("bookings.txt");
-    if (!in.is_open()) return;
-
-    vector<string> validLines;
-    string line;
-    time_t now = time(0);
-
-    while (getline(in, line)) {
-        stringstream ss(line);
-        string room, start, end, date, branch, division, batch, faculty, subject;
-        ss >> room >> start >> end >> date >> branch >> division >> batch >> faculty >> subject;
-
-        validLines.push_back(line); // keep all since AM/PM cannot be compared now
-    }
-    in.close();
-
-    ofstream out("bookings.txt", ios::trunc);
-    for (int i = 0; i < validLines.size(); i++)
-        out << validLines[i] << "\n";
-    out.close();
+    // placeholder — no-op
+    return;
 }
 
 // ------------------- TimetableManager Class -------------------
@@ -116,22 +173,28 @@ public:
                     cin >> choice;
 
                     if (choice == 1) {
-                        string h1, p1, h2, p2;
-                        cout << "Enter start time (HH AM/PM): ";
+                        string day, h1, p1, h2, p2, date;
+                        cout << "Enter day (e.g., MONDAY): ";
+                        cin >> day;
+                        cout << "Enter start time (e.g., 10 AM): ";
                         cin >> h1 >> p1;
-                        cout << "Enter end time (HH AM/PM): ";
+                        cout << "Enter end time (e.g., 12 PM): ";
                         cin >> h2 >> p2;
-
+                        cout << "Enter date (YYYY-MM-DD): ";
+                        cin >> date;
                         string start = h1 + " " + p1;
                         string end = h2 + " " + p2;
-
-                        showFreeRoomsAtTime(start, end);
+                        showFreeRoomsAtTime(day, start, end, date);
 
                     } else if (choice == 2) {
-                        string room;
+                        string room, day, date;
                         cout << "Enter room number: ";
                         cin >> room;
-                        showFreeTimesForRoom(room);
+                        cout << "Enter day to check (e.g., MONDAY): ";
+                        cin >> day;
+                        cout << "Enter date (YYYY-MM-DD): ";
+                        cin >> date;
+                        showFreeTimesForRoom(room, day, date);
 
                     } else if (choice == 3) {
                         bookSlot();
@@ -166,7 +229,8 @@ public:
     }
 
     // ------------------- Show Free Rooms -------------------
-    void showFreeRoomsAtTime(string startTime, string endTime) {
+
+    void showFreeRoomsAtTime(const string &day, const string &startTime, const string &endTime, const string &requestedDate) {
         try {
             ifstream normal("normal_timetable.txt");
             if (!normal.is_open()) throw FileException("Could not open normal_timetable.txt");
@@ -175,36 +239,64 @@ public:
             vector<string> booked;
             string line;
 
+            // convert requested times to minutes
+            int reqStart = timeStrToMinutes(startTime);
+            int reqEnd = timeStrToMinutes(endTime);
+            if (reqEnd <= reqStart) {
+                cout << "Invalid time range entered.\n";
+                return;
+            }
+
+            // ---- CHECK NORMAL TIMETABLE (recurring weekly entries) ----
             while (getline(normal, line)) {
+                string d, room, start, end, br, div, ba, subject;
                 stringstream ss(line);
-                string room, start, end;
-                ss >> room >> start >> end;
+                ss >> d >> room >> start >> end >> br >> div >> ba >> subject;
 
-                if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
-                    allRooms.push_back(room);
+                if (d == day) {
+                    if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
+                        allRooms.push_back(room);
 
-                if (start == startTime || end == endTime)
-                    booked.push_back(room);
+                    // parse start/end from normal timetable (like "10 AM")
+                    int sMin = timeStrToMinutes(start);
+                    int eMin = timeStrToMinutes(end);
+
+                    if (intervalsOverlap(sMin, eMin, reqStart, reqEnd))
+                        booked.push_back(room);
+                }
             }
             normal.close();
 
+            // ---- CHECK BOOKINGS.TXT (date-specific bookings) ----
             ifstream booking("bookings.txt");
-            if (!booking.is_open()) throw FileException("Could not open bookings.txt");
+            if (!booking.is_open()) {
+                // If no bookings file, still print free rooms derived from normal timetable
+                // but here we treat missing bookings file as OK
+            } else {
+                while (getline(booking, line)) {
+                    string d, room, start, end, date, br, div, ba, faculty, subject;
+                    stringstream ss(line);
+                    ss >> d >> room >> start >> end >> date >> br >> div >> ba >> faculty >> subject;
 
-            while (getline(booking, line)) {
-                stringstream ss(line);
-                string room, start, end;
-                ss >> room >> start >> end;
+                    if (d == day && date == requestedDate) {
+                        if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
+                            allRooms.push_back(room);
 
-                if (find(allRooms.begin(), allRooms.end(), room) == allRooms.end())
-                    allRooms.push_back(room);
+                        int sMin = timeStrToMinutes(start);
+                        int eMin = timeStrToMinutes(end);
 
-                if (start == startTime || end == endTime)
-                    booked.push_back(room);
+                        if (intervalsOverlap(sMin, eMin, reqStart, reqEnd))
+                            booked.push_back(room);
+                    }
+                }
+                booking.close();
             }
-            booking.close();
 
-            cout << "\nFree rooms between " << startTime << " and " << endTime << ":\n";
+            // remove duplicates in booked (if any)
+            sort(booked.begin(), booked.end());
+            booked.erase(unique(booked.begin(), booked.end()), booked.end());
+
+            cout << "\nFree rooms on " << day << " (" << requestedDate << ") between " << startTime << " and " << endTime << ":\n";
             int count = 0;
             for (auto &r : allRooms) {
                 if (find(booked.begin(), booked.end(), r) == booked.end()) {
@@ -214,68 +306,100 @@ public:
             }
             if (count == 0) throw RoomNotFoundException("No free rooms found for given time.");
             cout << "\n";
+
         }
         catch (FileException e) { cout << "Error: " << e.what() << endl; }
         catch (RoomNotFoundException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Show Free Times for Room -------------------
-    void showFreeTimesForRoom(string room) {
+    void showFreeTimesForRoom(const string &room, const string &day, const string &requestedDate) {
         try {
             ifstream normal("normal_timetable.txt");
             if (!normal.is_open()) throw FileException("Could not open normal_timetable.txt");
 
-            vector<string> allStart, allEnd, bookedStart, bookedEnd;
+            vector<pair<int,int>> allIntervals;   // intervals from normal timetable and bookings for this room/day
+            vector<pair<int,int>> bookedIntervals; // intervals that are booked (overlap with requested date bookings)
+
             string line;
 
+            // normal timetable (weekly) entries
             while (getline(normal, line)) {
+                string d, r, start, end, br, div, ba, subject;
                 stringstream ss(line);
-                string r, start, end;
-                ss >> r >> start >> end;
+                ss >> d >> r >> start >> end >> br >> div >> ba >> subject;
 
-                allStart.push_back(start);
-                allEnd.push_back(end);
-
-                if (r == room) {
-                    bookedStart.push_back(start);
-                    bookedEnd.push_back(end);
+                if (d == day && r == room) {
+                    int sMin = timeStrToMinutes(start);
+                    int eMin = timeStrToMinutes(end);
+                    allIntervals.emplace_back(sMin, eMin);
                 }
             }
             normal.close();
 
+            // bookings on the exact requestedDate for this room
             ifstream booking("bookings.txt");
-            if (!booking.is_open()) throw FileException("Could not open bookings.txt");
+            if (booking.is_open()) {
+                while (getline(booking, line)) {
+                    string d, r, start, end, date, br, div, ba, faculty, subject;
+                    stringstream ss(line);
+                    ss >> d >> r >> start >> end >> date >> br >> div >> ba >> faculty >> subject;
 
-            while (getline(booking, line)) {
-                stringstream ss(line);
-                string r, start, end;
-                ss >> r >> start >> end;
+                    if (d == day && r == room && date == requestedDate) {
+                        int sMin = timeStrToMinutes(start);
+                        int eMin = timeStrToMinutes(end);
+                        // a booked interval for this room on that date
+                        bookedIntervals.emplace_back(sMin, eMin);
 
-                allStart.push_back(start);
-                allEnd.push_back(end);
-
-                if (r == room) {
-                    bookedStart.push_back(start);
-                    bookedEnd.push_back(end);
+                        // also include it in allIntervals so we can show busy vs free slots from a combined list
+                        allIntervals.emplace_back(sMin, eMin);
+                    }
                 }
+                booking.close();
             }
-            booking.close();
 
-            if (allStart.size() == 0) throw RoomNotFoundException("No record found for the given room.");
+            // sort & unique allIntervals based on start time for displaying
+            sort(allIntervals.begin(), allIntervals.end());
+            // We will print time slots from allIntervals that are not exactly matched in bookedIntervals
+            cout << "\nFree times for room " << room << " on " << day << " (" << requestedDate << "):\n";
 
-            cout << "\nFree times for room " << room << ":\n";
-            for (int i = 0; i < allStart.size(); i++) {
+            if (allIntervals.empty()) {
+                cout << "No standard timetable entries found for this room and day.\n";
+                return;
+            }
+
+            for (auto &iv : allIntervals) {
                 bool isBooked = false;
-                for (int j = 0; j < bookedStart.size(); j++)
-                    if (allStart[i] == bookedStart[j] && allEnd[i] == bookedEnd[j])
+                for (auto &biv : bookedIntervals) {
+                    // if intervals are identical (exact booked interval) or overlap, treat as booked
+                    if (iv.first == biv.first && iv.second == biv.second) {
                         isBooked = true;
-
-                if (!isBooked)
-                    cout << allStart[i] << " - " << allEnd[i] << "\n";
+                        break;
+                    }
+                    // if the interval iv overlaps with any booked interval, it's not free
+                    if (intervalsOverlap(iv.first, iv.second, biv.first, biv.second)) {
+                        isBooked = true;
+                        break;
+                    }
+                }
+                if (!isBooked) {
+                    // print in HH:MM AM/PM format
+                    auto printTime = [](int minutes) {
+                        int hh = minutes / 60;
+                        int mm = minutes % 60;
+                        string period = (hh >= 12) ? "PM" : "AM";
+                        int displayH = hh % 12;
+                        if (displayH == 0) displayH = 12;
+                        stringstream out;
+                        if (mm == 0) out << displayH << " " << period;
+                        else out << displayH << ":" << setw(2) << setfill('0') << mm << " " << period;
+                        return out.str();
+                    };
+                    cout << printTime(iv.first) << " - " << printTime(iv.second) << "\n";
+                }
             }
         }
         catch (FileException e) { cout << "Error: " << e.what() << endl; }
-        catch (RoomNotFoundException e) { cout << "Error: " << e.what() << endl; }
     }
 
     // ------------------- Book Slot -------------------
@@ -288,9 +412,6 @@ public:
             cout << "Enter choice: ";
             cin >> choice;
 
-            if (choice != 1 && choice != 2)
-                throw InvalidChoiceException("Invalid booking option selected.");
-
             string branch, division, batch;
             cout << "Enter branch: ";
             cin >> branch;
@@ -300,7 +421,9 @@ public:
             cin >> batch;
 
             if (choice == 1) {
-                string h1, p1, h2, p2, date;
+                string day, h1, p1, h2, p2, date;
+                cout << "Enter day: ";
+                cin >> day;
                 cout << "Enter start time (HH AM/PM): ";
                 cin >> h1 >> p1;
                 cout << "Enter end time (HH AM/PM): ";
@@ -311,7 +434,7 @@ public:
                 string start = h1 + " " + p1;
                 string end = h2 + " " + p2;
 
-                showFreeRoomsAtTime(start, end);
+                showFreeRoomsAtTime(day, start, end, date);
 
                 char confirm;
                 cout << "Do you want to book any of these rooms? (y/n): ";
@@ -324,46 +447,103 @@ public:
                     cout << "Enter subject: ";
                     cin >> subject;
 
-                    ofstream out("bookings.txt", ios::app);
-                    out << room << " " << start << " " << end << " " << date << " "
-                        << branch << " " << division << " " << batch << " "
-                        << Temp::loggedFaculty << " " << subject << "\n";
-                    out.close();
-                    cout << "Booking saved!\n";
+                    // Before writing, we should re-check overlap to avoid race conditions
+                    int reqStart = timeStrToMinutes(start);
+                    int reqEnd = timeStrToMinutes(end);
+                    bool conflict = false;
+
+                    ifstream booking("bookings.txt");
+                    string line;
+                    if (booking.is_open()) {
+                        while (getline(booking, line)) {
+                            string d, r, s, e, date2, br, di, ba, fac, sub;
+                            stringstream ss(line);
+                            ss >> d >> r >> s >> e >> date2 >> br >> di >> ba >> fac >> sub;
+                            if (d == day && r == room && date2 == date) {
+                                int sMin = timeStrToMinutes(s);
+                                int eMin = timeStrToMinutes(e);
+                                if (intervalsOverlap(sMin, eMin, reqStart, reqEnd)) {
+                                    conflict = true;
+                                    break;
+                                }
+                            }
+                        }
+                        booking.close();
+                    }
+
+                    if (conflict) {
+                        cout << "Selected room conflicts with an existing booking on that date/time. Booking cancelled.\n";
+                    } else {
+                        ofstream out("bookings.txt", ios::app);
+                        out << day << " " << room << " " << start << " " << end << " " << date << " "
+                            << branch << " " << division << " " << batch << " "
+                            << Temp::loggedFaculty << " " << subject << "\n";
+                        out.close();
+                        cout << "Booking saved!\n";
+                    }
                 }
                 else cout << "Booking cancelled.\n";
             }
 
             else if (choice == 2) {
-                string room;
+                string room, day, date;
+                cout << "Enter day: ";
+                cin >> day;
                 cout << "Enter room number: ";
                 cin >> room;
-                showFreeTimesForRoom(room);
+                cout << "Enter date (YYYY-MM-DD): ";
+                cin >> date;
+                showFreeTimesForRoom(room, day, date);
 
                 char confirm;
                 cout << "Do you want to book this room? (y/n): ";
                 cin >> confirm;
 
                 if (confirm == 'y') {
-                    string h1, p1, h2, p2, date, subject;
+                    string h1, p1, h2, p2, subject;
                     cout << "Enter start time (HH AM/PM): ";
                     cin >> h1 >> p1;
                     cout << "Enter end time (HH AM/PM): ";
                     cin >> h2 >> p2;
-                    cout << "Enter date (YYYY-MM-DD): ";
-                    cin >> date;
                     cout << "Enter subject: ";
                     cin >> subject;
 
                     string start = h1 + " " + p1;
                     string end = h2 + " " + p2;
 
-                    ofstream out("bookings.txt", ios::app);
-                    out << room << " " << start << " " << end << " " << date << " "
-                        << branch << " " << division << " " << batch << " "
-                        << Temp::loggedFaculty << " " << subject << "\n";
-                    out.close();
-                    cout << "Booking saved!\n";
+                    int reqStart = timeStrToMinutes(start);
+                    int reqEnd = timeStrToMinutes(end);
+                    bool conflict = false;
+
+                    ifstream booking("bookings.txt");
+                    string line;
+                    if (booking.is_open()) {
+                        while (getline(booking, line)) {
+                            string d, r, s, e, date2, br, di, ba, fac, sub;
+                            stringstream ss(line);
+                            ss >> d >> r >> s >> e >> date2 >> br >> di >> ba >> fac >> sub;
+                            if (d == day && r == room && date2 == date) {
+                                int sMin = timeStrToMinutes(s);
+                                int eMin = timeStrToMinutes(e);
+                                if (intervalsOverlap(sMin, eMin, reqStart, reqEnd)) {
+                                    conflict = true;
+                                    break;
+                                }
+                            }
+                        }
+                        booking.close();
+                    }
+
+                    if (conflict) {
+                        cout << "Selected time conflicts with an existing booking on that date. Booking cancelled.\n";
+                    } else {
+                        ofstream out("bookings.txt", ios::app);
+                        out << day << " " << room << " " << start << " " << end << " " << date << " "
+                            << branch << " " << division << " " << batch << " "
+                            << Temp::loggedFaculty << " " << subject << "\n";
+                        out.close();
+                        cout << "Booking saved!\n";
+                    }
                 }
                 else cout << "Booking cancelled.\n";
             }
@@ -423,7 +603,7 @@ public:
             ifstream normal("normal_timetable.txt");
             if (!normal.is_open()) throw FileException("Could not open normal_timetable.txt.");
             while (getline(normal, line)) {
-                if (line.find(branch + division + batch) != string::npos)
+                if (line.find(branch + " " + division + " " + batch) != string::npos)
                     cout << line << "\n";
             }
             normal.close();
@@ -547,4 +727,3 @@ int main() {
 
     return 0;
 }
-

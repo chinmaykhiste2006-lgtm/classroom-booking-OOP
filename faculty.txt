@@ -1,6 +1,5 @@
-chinmay|a,b,c|ch|ch1
-chinmay|a,b,c|ch|123
-Chinmay|a,b,c|C@123|123
-Chinmay Khiste|a,b,c|A123|123
-A123|123|2|1
+Sangeeta Ma'am|OOP,OS|S@123|123
 
+Deepak sir|DBMS,CN|D123|D@123
+Sangeeta Ma'am|OOP,OS|S@123|123
+Deepak Sir|DBMS|D@123|123

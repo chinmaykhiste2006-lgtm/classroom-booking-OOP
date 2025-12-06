@@ -1,0 +1,5 @@
+g++ -std=c++17 timetable.cpp -o timetable 
+./timetable
+
+g++ -std=c++11 class.cpp -o class
+./class
