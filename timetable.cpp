@@ -150,6 +150,7 @@ class TimetableManager : public User {
     string batch;
     string branch;
 
+
 public:
     TimetableManager(string n) : User(n, "faculty") {}
     TimetableManager(string n, string d, string b, string br) : User(n, "student") {
